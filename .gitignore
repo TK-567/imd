@@ -1,0 +1,14 @@
+# 构建产物
+build/
+dist/
+
+# 生成的中间文件
+icon_1024.png
+.dmg_bg.png
+icon.iconset/
+make_icon_bin
+make_bg_bin
+find_window_bin
+
+# 系统
+.DS_Store
