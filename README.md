@@ -3,7 +3,6 @@
 极简 macOS Markdown 阅读 / 编辑器。单窗口多标签，左侧目录、右侧预览/源码双视图，黑白主题跟随系统。
 
 - 主页: https://github.com/TK-567
-- 联系: anqi.ssx@163.com
 - 协议: MIT
 
 ## 特性
