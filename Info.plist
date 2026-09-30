@@ -41,12 +41,15 @@
             <string>Markdown</string>
             <key>CFBundleTypeRole</key>
             <string>Editor</string>
-            <key>LSItemContentTypes</key>
+            <key>CFBundleTypeExtensions</key>
             <array>
-                <string>net.daringfireball.markdown</string>
+                <string>md</string>
+                <string>markdown</string>
+                <string>mdown</string>
+                <string>mkd</string>
             </array>
             <key>LSHandlerRank</key>
-            <string>Alternate</string>
+            <string>Owner</string>
         </dict>
     </array>
 </dict>

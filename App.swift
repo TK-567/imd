@@ -55,10 +55,6 @@ final class EditorController: ObservableObject {
     var activeText: String { activeDoc?.text ?? "" }
     var activeHeadings: [Heading] { activeDoc?.headings ?? [] }
     var activeBlocks: [Block] { activeDoc?.blocks ?? [] }
-    var titleName: String {
-        guard let d = activeDoc else { return "imd" }
-        return (d.dirty ? "● " : "") + d.name
-    }
 
     // MARK: file ops
 
@@ -585,6 +581,12 @@ struct ContentView: View {
         .onDrop(of: [.fileURL], isTargeted: $dragOver) { providers in
             handleDrop(providers)
         }
+        .onOpenURL { url in
+            let u = url.isFileURL ? url : URL(fileURLWithPath: url.path)
+            if ["md", "markdown", "mdown", "mkd"].contains(u.pathExtension.lowercased()) {
+                controller.open(url: u)
+            }
+        }
     }
 
     private var emptyState: some View {
@@ -626,7 +628,7 @@ struct MDApp: App {
     @StateObject private var controller = EditorController()
 
     var body: some Scene {
-        WindowGroup(controller.titleName) {
+        Window("imd", id: "main") {
             ContentView()
                 .environmentObject(controller)
                 .frame(minWidth: 900, minHeight: 560)
