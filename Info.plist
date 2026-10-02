@@ -9,9 +9,9 @@
     <key>CFBundleIdentifier</key>
     <string>local.imd</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>1.1</string>
     <key>CFBundleExecutable</key>
     <string>imd</string>
     <key>CFBundlePackageType</key>
@@ -40,7 +40,7 @@
     <key>NSHumanReadableCopyright</key>
     <string>__COPYRIGHT__</string>
     <key>CFBundleGetInfoString</key>
-    <string>imd V1.0, __COPYRIGHT__</string>
+    <string>imd V1.1, __COPYRIGHT__</string>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>

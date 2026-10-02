@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import os, sys, dmgbuild
 
-OUT = "dist/imd-1.0.dmg"
+OUT = "dist/imd-1.1.0.dmg"
 BG = ".dmg_bg.png"
 APP = "build/imd.app"
 

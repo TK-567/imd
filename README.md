@@ -21,7 +21,7 @@
 
 ## 安装
 
-1. 下载 Releases 中的 `imd-1.0.dmg`
+1. 下载 Releases 中的 `imd-1.1.0.dmg`
 2. 双击挂载，把 `imd` 拖到 `Applications`
 3. 首次打开若被 Gatekeeper 拦截：右键 `imd.app` → 打开；或执行 `xattr -cr /Applications/imd.app`
 
@@ -29,7 +29,7 @@
 
 ```bash
 ./build.sh          # 编译并打包 build/imd.app
-./make_dmg.sh       # 生成可分发安装包 dist/imd-1.0.dmg (含图标/背景/布局)
+./make_dmg.sh       # 生成可分发安装包 dist/imd-1.1.0.dmg (含图标/背景/布局)
 ```
 
 依赖：Xcode Command Line Tools（swiftc / hdiutil / iconutil / sips）与 Python 3（dmgbuild：`pip3 install --user dmgbuild`）。
