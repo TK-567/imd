@@ -1,0 +1,11 @@
+/* imd 中文本地化 — 标准菜单项由系统框架按 zh-Hans 提供 */
+"New Tab" = "新建标签";
+"Open…" = "打开…";
+"Save" = "保存";
+"Save As…" = "另存为…";
+"Close Tab" = "关闭标签";
+"Find Next" = "查找下一个";
+"Find Previous" = "查找上一个";
+"Find & Replace" = "查找与替换";
+"Preview" = "预览";
+"Source" = "源码";

@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import WebKit
+import Combine
 import UniformTypeIdentifiers
 
 // MARK: - Model
@@ -27,6 +28,11 @@ struct ScrollRequest: Equatable {
     let headingID: UUID
 }
 
+struct SearchSel: Equatable {
+    let id = UUID()
+    let range: NSRange
+}
+
 struct MDDoc: Identifiable {
     let id = UUID()
     var text: String
@@ -44,6 +50,15 @@ final class EditorController: ObservableObject {
     @Published var active: Int = 0
     @Published var recentFiles: [URL] = []
     @Published var scrollRequest: ScrollRequest? = nil
+    @Published var showSearch = false
+    @Published var searchText = ""
+    @Published var replaceText = ""
+    @Published var matchCase = false
+    @Published var matchRanges: [NSRange] = []
+    @Published var matchIndex = -1
+    @Published var searchSelection: SearchSel? = nil
+    @Published var lastReplaceCount = 0
+    @Published var requestedTab: ActiveTab? = nil
 
     private let recentKey = "recentFiles"
 
@@ -105,7 +120,10 @@ final class EditorController: ObservableObject {
     }
 
     func selectTab(_ idx: Int) {
-        if docs.indices.contains(idx) { active = idx }
+        if docs.indices.contains(idx) {
+            active = idx
+            recomputeMatches()
+        }
     }
 
     func setText(_ s: String) {
@@ -116,6 +134,7 @@ final class EditorController: ObservableObject {
         let (h, b) = parseDocument(s)
         docs[active].headings = h
         docs[active].blocks = b
+        recomputeMatches()
     }
 
     func reparseActive() {
@@ -124,6 +143,7 @@ final class EditorController: ObservableObject {
         let (h, b) = parseDocument(s)
         docs[active].headings = h
         docs[active].blocks = b
+        recomputeMatches()
     }
 
     func save() {
@@ -161,6 +181,67 @@ final class EditorController: ObservableObject {
 
     func headingByID(_ id: UUID) -> Heading? {
         activeHeadings.first { $0.id == id }
+    }
+
+    // MARK: search & replace
+
+    func toggleSearch() {
+        showSearch.toggle()
+        if showSearch {
+            recomputeMatches()
+            selectCurrentMatch()
+        }
+    }
+
+    func recomputeMatches() {
+        matchRanges = []
+        matchIndex = -1
+        guard !searchText.isEmpty else { return }
+        let hay = activeText as NSString
+        let opts: NSString.CompareOptions = matchCase ? [] : [.caseInsensitive]
+        var loc = 0
+        while loc < hay.length {
+            let r = hay.range(of: searchText, options: opts, range: NSRange(location: loc, length: hay.length - loc))
+            if r.location == NSNotFound { break }
+            matchRanges.append(r)
+            loc = r.location + max(r.length, 1)
+        }
+        if !matchRanges.isEmpty { matchIndex = 0 }
+    }
+
+    private func selectCurrentMatch() {
+        guard matchIndex >= 0, matchIndex < matchRanges.count else { return }
+        searchSelection = SearchSel(range: matchRanges[matchIndex])
+    }
+
+    func findNext() {
+        guard !matchRanges.isEmpty else { return }
+        matchIndex = (matchIndex + 1) % matchRanges.count
+        selectCurrentMatch()
+    }
+
+    func findPrevious() {
+        guard !matchRanges.isEmpty else { return }
+        matchIndex = (matchIndex - 1 + matchRanges.count) % matchRanges.count
+        selectCurrentMatch()
+    }
+
+    func replaceCurrent() {
+        guard matchIndex >= 0, matchIndex < matchRanges.count else { return }
+        let r = matchRanges[matchIndex]
+        let ns = activeText as NSString
+        setText(ns.replacingCharacters(in: r, with: replaceText))
+        searchSelection = SearchSel(range: NSRange(location: r.location, length: (replaceText as NSString).length))
+    }
+
+    func replaceAll() {
+        guard !matchRanges.isEmpty else { return }
+        let mutable = NSMutableString(string: activeText)
+        for r in matchRanges.reversed() {
+            mutable.replaceCharacters(in: r, with: replaceText)
+        }
+        lastReplaceCount = matchRanges.count
+        setText(mutable as String)
     }
 
     // MARK: recent
@@ -264,6 +345,8 @@ pre { background: #f5f5f7; padding: 14px 16px; border-radius: 10px; overflow: au
 pre code { background: none; padding: 0; font-size: 13px; line-height: 1.5; }
 blockquote { border-left: 4px solid #d2d2d7; margin: 0 0 12px; padding: 6px 16px;
   color: #4a4a4f; background: rgba(0,0,0,0.03); border-radius: 0 6px 6px 0; }
+mark.imd-hl { background: #ffd60a; color: #000; border-radius: 3px; padding: 0 1px; }
+mark.imd-hl.cur { background: #ff3b30; color: #fff; }
 table { border-collapse: collapse; width: 100%; margin: 0 0 14px; font-size: 14px; display: block; overflow-x: auto; }
 th, td { border: 1px solid #d2d2d7; padding: 7px 12px; text-align: left; }
 th { background: rgba(0,0,0,0.04); font-weight: 600; }
@@ -296,6 +379,51 @@ private func shellHTML() -> String {
 marked.setOptions({ gfm: true, breaks: true });
 function renderMd(md){ var el=document.getElementById('content'); try { el.innerHTML = marked.parse(md); } catch(e){ el.textContent = String(e); } }
 function scrollToHeading(i){ var hs=document.querySelectorAll('h1,h2,h3,h4,h5,h6'); if(hs[i]){ hs[i].scrollIntoView({behavior:'smooth', block:'start'}); } }
+function findOccurrences(text, term, cs){
+  var res=[];
+  var hay = cs ? text : text.toLowerCase();
+  var needle = cs ? term : term.toLowerCase();
+  if(!needle) return res;
+  var i = hay.indexOf(needle);
+  while(i !== -1){ res.push(i); i = hay.indexOf(needle, i + needle.length); }
+  return res;
+}
+function clearMarks(){
+  document.querySelectorAll('mark.imd-hl').forEach(function(m){
+    var p=m.parentNode; p.replaceChild(document.createTextNode(m.textContent), m); p.normalize();
+  });
+}
+function applyPreviewSearch(term, cs){
+  clearMarks();
+  window.__imdMarks=[];
+  if(!term) return;
+  var root=document.getElementById('content');
+  var walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+  var nodes=[];
+  while(walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(function(node){
+    var text=node.nodeValue;
+    var hits=findOccurrences(text, term, cs);
+    if(!hits.length) return;
+    var frag=document.createDocumentFragment();
+    var last=0;
+    hits.forEach(function(start){
+      if(start>last) frag.appendChild(document.createTextNode(text.slice(last,start)));
+      var mk=document.createElement('mark'); mk.className='imd-hl'; mk.textContent=text.substr(start, term.length);
+      frag.appendChild(mk);
+      last=start+term.length;
+    });
+    if(last<text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+    node.parentNode.replaceChild(frag,node);
+  });
+  window.__imdMarks=Array.prototype.slice.call(document.querySelectorAll('mark.imd-hl'));
+}
+function scrollToMark(i){
+  var ms=window.__imdMarks||[];
+  ms.forEach(function(m){ m.classList.remove('cur'); });
+  if(ms[i]){ ms[i].classList.add('cur'); ms[i].scrollIntoView({block:'center',behavior:'smooth'}); }
+  return ms.length;
+}
 </script>
 </body></html>
 """
@@ -326,12 +454,29 @@ struct PreviewView: NSViewRepresentable {
     func updateNSView(_ web: WKWebView, context: Context) {
         let c = context.coordinator
         if c.ready {
+            var needApply = false
             if c.lastText != text {
                 c.lastText = text
                 web.evaluateJavaScript("renderMd(\(jsString(text)))")
+                needApply = true
             }
-            if let req = controller.scrollRequest, c.lastScrollID != req.id {
-                c.lastScrollID = req.id
+            let term = controller.showSearch ? controller.searchText : ""
+            if c.lastTerm != term || c.lastCase != controller.matchCase || c.lastShow != controller.showSearch {
+                needApply = true
+            }
+            c.lastTerm = term
+            c.lastCase = controller.matchCase
+            c.lastShow = controller.showSearch
+            if needApply {
+                web.evaluateJavaScript("applyPreviewSearch(\(jsString(term)),\(controller.matchCase ? "true" : "false"))")
+                web.evaluateJavaScript("scrollToMark(\(controller.matchIndex))")
+            }
+            if let sel = controller.searchSelection, c.lastScrollID != sel.id {
+                c.lastScrollID = sel.id
+                web.evaluateJavaScript("scrollToMark(\(controller.matchIndex))")
+            }
+            if let req = controller.scrollRequest, c.lastTocScrollID != req.id {
+                c.lastTocScrollID = req.id
                 if let idx = controller.activeHeadings.firstIndex(where: { $0.id == req.headingID }) {
                     web.evaluateJavaScript("scrollToHeading(\(idx))")
                 }
@@ -347,6 +492,10 @@ struct PreviewView: NSViewRepresentable {
         var pendingText: String? = nil
         var lastText: String = ""
         var lastScrollID: UUID? = nil
+        var lastTocScrollID: UUID? = nil
+        var lastTerm: String? = nil
+        var lastCase: Bool? = nil
+        var lastShow: Bool? = nil
 
         func webView(_ w: WKWebView, didFinish navigation: WKNavigation!) {
             ready = true
@@ -365,7 +514,7 @@ struct SourceEditor: NSViewRepresentable {
     @Binding var text: String
     @EnvironmentObject var controller: EditorController
 
-    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+    func makeCoordinator() -> Coordinator { Coordinator(controller: controller, text: $text) }
 
     func makeNSView(context: Context) -> NSScrollView {
         let tv = NSTextView()
@@ -380,6 +529,7 @@ struct SourceEditor: NSViewRepresentable {
         tv.textContainer?.widthTracksTextView = true
         tv.textContainer?.size = NSSize(width: 0, height: 0)
         tv.insertionPointColor = NSColor.controlAccentColor
+        tv.usesFindBar = false
         let scroll = NSScrollView()
         scroll.documentView = tv
         scroll.hasVerticalScroller = true
@@ -403,6 +553,13 @@ struct SourceEditor: NSViewRepresentable {
             context.coordinator.lastScrollID = req.id
             scrollToHeadingTop(tv, range: h.sourceRange)
         }
+        if let sel = controller.searchSelection,
+           context.coordinator.lastSearchID != sel.id {
+            context.coordinator.lastSearchID = sel.id
+            tv.setSelectedRange(sel.range)
+            tv.scrollRangeToVisible(sel.range)
+        }
+        context.coordinator.refreshHighlights()
     }
 
     private func scrollToHeadingTop(_ tv: NSTextView, range: NSRange) {
@@ -421,11 +578,48 @@ struct SourceEditor: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
+        let controller: EditorController
         var binding: Binding<String>
         weak var textView: NSTextView?
         var lastScrollID: UUID?
+        var lastSearchID: UUID?
+        var lastHL: [NSRange] = []
+        private var bag = Set<AnyCancellable>()
 
-        init(text: Binding<String>) { self.binding = text }
+        init(controller: EditorController, text: Binding<String>) {
+            self.controller = controller
+            self.binding = text
+            super.init()
+            controller.$matchRanges.sink { [weak self] _ in self?.refreshHighlights() }.store(in: &bag)
+            controller.$matchIndex.sink { [weak self] _ in self?.refreshHighlights() }.store(in: &bag)
+            controller.$showSearch.sink { [weak self] _ in self?.refreshHighlights() }.store(in: &bag)
+        }
+
+        func refreshHighlights() {
+            guard let tv = textView, let ts = tv.textStorage else { return }
+            let full = NSRange(location: 0, length: ts.length)
+            for r in lastHL {
+                let loc = max(0, min(r.location, full.length))
+                let len = max(0, min(r.length, full.length - loc))
+                guard len > 0 else { continue }
+                let cr = NSRange(location: loc, length: len)
+                ts.removeAttribute(.backgroundColor, range: cr)
+                ts.removeAttribute(.foregroundColor, range: cr)
+            }
+            lastHL = []
+            guard controller.showSearch, !controller.matchRanges.isEmpty else { return }
+            let otherBG = NSColor(srgbRed: 1.0, green: 0.84, blue: 0.04, alpha: 1)
+            let curBG = NSColor(srgbRed: 1.0, green: 0.23, blue: 0.19, alpha: 1)
+            var applied: [NSRange] = []
+            for (i, r) in controller.matchRanges.enumerated() {
+                guard r.location >= 0, r.location + r.length <= ts.length else { continue }
+                let isCurrent = i == controller.matchIndex
+                ts.addAttribute(.backgroundColor, value: isCurrent ? curBG : otherBG, range: r)
+                ts.addAttribute(.foregroundColor, value: isCurrent ? NSColor.white : NSColor.black, range: r)
+                applied.append(r)
+            }
+            lastHL = applied
+        }
 
         func textDidChange(_ notification: Notification) {
             guard let tv = textView else { return }
@@ -533,6 +727,77 @@ struct TabBar: View {
     }
 }
 
+// MARK: - Search bar
+
+struct SearchBar: View {
+    @EnvironmentObject var controller: EditorController
+    @FocusState private var searchFocused: Bool
+
+    private var hasMatch: Bool { !controller.matchRanges.isEmpty }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+
+            TextField("搜索", text: $controller.searchText)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 170)
+                .focused($searchFocused)
+                .onSubmit { controller.findNext() }
+
+            Text(countText)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .frame(width: 52)
+
+            Button { controller.findPrevious() } label: { Image(systemName: "chevron.up") }
+                .buttonStyle(.borderless).disabled(!hasMatch).help("上一个")
+            Button { controller.findNext() } label: { Image(systemName: "chevron.down") }
+                .buttonStyle(.borderless).disabled(!hasMatch).help("下一个")
+
+            Divider().frame(height: 16)
+
+            TextField("替换为", text: $controller.replaceText)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 140)
+
+            Button("替换") { controller.replaceCurrent() }
+                .disabled(!hasMatch)
+            Button("全部替换") { controller.replaceAll() }
+                .disabled(!hasMatch)
+
+            Button { controller.matchCase.toggle() } label: {
+                Image(systemName: controller.matchCase ? "textformat.alt" : "textformat")
+                    .foregroundColor(controller.matchCase ? Color.accentColor : Color.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help("区分大小写")
+
+            Spacer()
+
+            if controller.lastReplaceCount > 0 {
+                Text("已替换 \(controller.lastReplaceCount) 处")
+                    .font(.system(size: 11)).foregroundColor(.secondary)
+            }
+
+            Button { controller.showSearch = false } label: { Image(systemName: "xmark") }
+                .buttonStyle(.borderless).help("关闭 (⌘F)")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color(NSColor.controlBackgroundColor))
+        .onAppear { searchFocused = true }
+        .onChange(of: controller.searchText) { _ in controller.recomputeMatches() }
+        .onChange(of: controller.matchCase) { _ in controller.recomputeMatches() }
+    }
+
+    private var countText: String {
+        if controller.searchText.isEmpty { return "" }
+        if controller.matchRanges.isEmpty { return "0 处" }
+        return "\(controller.matchIndex + 1)/\(controller.matchRanges.count)"
+    }
+}
+
 // MARK: - Content
 
 struct ContentView: View {
@@ -563,6 +828,11 @@ struct ContentView: View {
                     .pickerStyle(.segmented)
                     .padding(8)
 
+                    if controller.showSearch {
+                        SearchBar()
+                        Divider()
+                    }
+
                     Divider()
 
                     if controller.docs.isEmpty {
@@ -585,6 +855,12 @@ struct ContentView: View {
             let u = url.isFileURL ? url : URL(fileURLWithPath: url.path)
             if ["md", "markdown", "mdown", "mkd"].contains(u.pathExtension.lowercased()) {
                 controller.open(url: u)
+            }
+        }
+        .onChange(of: controller.requestedTab) { req in
+            if let req = req {
+                tab = req
+                controller.requestedTab = nil
             }
         }
     }
@@ -657,6 +933,16 @@ struct MDApp: App {
                 Button("关闭标签") {
                     if controller.docs.isEmpty == false { controller.closeDoc(at: controller.active) }
                 }.keyboardShortcut("w", modifiers: .command)
+            }
+            CommandGroup(replacing: .textEditing) {
+                Button("查找下一个") { controller.findNext() }.keyboardShortcut("g", modifiers: .command)
+                Button("查找上一个") { controller.findPrevious() }.keyboardShortcut("g", modifiers: [.command, .shift])
+            }
+            CommandGroup(replacing: .toolbar) {
+                Button("预览") { controller.requestedTab = .preview }.keyboardShortcut("1", modifiers: .command)
+                Button("源码") { controller.requestedTab = .source }.keyboardShortcut("2", modifiers: .command)
+                Divider()
+                Button("查找与替换") { controller.toggleSearch() }.keyboardShortcut("f", modifiers: .command)
             }
         }
     }

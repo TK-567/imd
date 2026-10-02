@@ -28,6 +28,8 @@ sed "s/__COPYRIGHT__/$COPYRIGHT/g" Info.plist > "$APP/Contents/Info.plist"
 echo "[3/4] copy resources"
 cp Resources/*.js "$APP/Contents/Resources/" 2>/dev/null || true
 cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns" 2>/dev/null || true
+mkdir -p "$APP/Contents/Resources/zh-Hans.lproj"
+cp zh-Hans.lproj/Localizable.strings "$APP/Contents/Resources/zh-Hans.lproj/" 2>/dev/null || true
 
 echo "[4/4] ad-hoc sign"
 codesign --force --deep --sign - "$APP" 2>/dev/null || true
