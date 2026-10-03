@@ -11,6 +11,10 @@
 - 左侧自动生成目录（TOC），点击跳转；源码视图跳转后标题置顶
 - 右侧双视图：渲染预览（marked.js，完整 GFM：表格/引用/列表/代码块/删除线/任务列表）与可编辑源码
 - 黑白主题随系统自动切换
+- 全文搜索/替换（⌘F）：计数、上/下个匹配、替换、全部替换、区分大小写；源码与预览双高亮
+- 支持 txt：txt 为整窗编辑模式（无目录、无预览切换）；md / txt 混合多标签
+- 新建文档可选 Markdown / 纯文本 (txt) 类型
+- 界面随系统语言自适应中文 / 英文（zh-Hans / en 本地化）
 - 拖拽 `.md` 到窗口即可打开；⌘O 多选打开；最近文件菜单
 - 代码围栏内的 `#` 注释不会误入目录
 - 无需 App Store，直接安装 `.app`
@@ -21,7 +25,7 @@
 
 ## 安装
 
-1. 下载 Releases 中的 `imd-1.1.0.dmg`
+1. 下载 Releases 中的 `imd-1.2.0.dmg`
 2. 双击挂载，把 `imd` 拖到 `Applications`
 3. 首次打开若被 Gatekeeper 拦截：右键 `imd.app` → 打开；或执行 `xattr -cr /Applications/imd.app`
 
@@ -29,7 +33,7 @@
 
 ```bash
 ./build.sh          # 编译并打包 build/imd.app
-./make_dmg.sh       # 生成可分发安装包 dist/imd-1.1.0.dmg (含图标/背景/布局)
+./make_dmg.sh       # 生成可分发安装包 dist/imd-1.2.0.dmg (含图标/背景/布局)
 ```
 
 依赖：Xcode Command Line Tools（swiftc / hdiutil / iconutil / sips）与 Python 3（dmgbuild：`pip3 install --user dmgbuild`）。

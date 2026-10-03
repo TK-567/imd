@@ -9,13 +9,20 @@
     <key>CFBundleIdentifier</key>
     <string>local.imd</string>
     <key>CFBundleVersion</key>
-    <string>2</string>
+    <string>3</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.1</string>
+    <string>1.2</string>
     <key>CFBundleExecutable</key>
     <string>imd</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>zh-Hans</string>
+    </array>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleDevelopmentRegion</key>
@@ -40,7 +47,7 @@
     <key>NSHumanReadableCopyright</key>
     <string>__COPYRIGHT__</string>
     <key>CFBundleGetInfoString</key>
-    <string>imd V1.1, __COPYRIGHT__</string>
+    <string>imd V1.2, __COPYRIGHT__</string>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>
@@ -57,6 +64,18 @@
             </array>
             <key>LSHandlerRank</key>
             <string>Owner</string>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Plain Text</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>txt</string>
+            </array>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
         </dict>
     </array>
 </dict>

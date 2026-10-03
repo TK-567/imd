@@ -38,9 +38,10 @@ struct MDDoc: Identifiable {
     var text: String
     var fileURL: URL?
     var dirty: Bool = false
+    var isTxt: Bool = false
     var headings: [Heading] = []
     var blocks: [Block] = []
-    var name: String { fileURL?.lastPathComponent ?? "未命名.md" }
+    var name: String { fileURL?.lastPathComponent ?? NSLocalizedString(isTxt ? "untitledTxt" : "untitledMd", comment: "") }
 }
 
 // MARK: - Controller
@@ -75,10 +76,10 @@ final class EditorController: ObservableObject {
 
     func openDialog() {
         let panel = NSOpenPanel()
-        panel.title = "打开 Markdown 文件"
+        panel.title = NSLocalizedString("openFilePanel", comment: "")
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [UTType(filenameExtension: "md"), UTType(filenameExtension: "markdown")].compactMap { $0 }
+        panel.allowedContentTypes = [UTType(filenameExtension: "md"), UTType(filenameExtension: "markdown"), UTType(filenameExtension: "txt")].compactMap { $0 }
         if panel.runModal() == .OK {
             for url in panel.urls { open(url: url) }
         }
@@ -92,6 +93,7 @@ final class EditorController: ObservableObject {
             active = idx
         } else {
             var d = MDDoc(text: s, fileURL: url)
+            d.isTxt = url.pathExtension.lowercased() == "txt"
             let (h, b) = parseDocument(s)
             d.headings = h
             d.blocks = b
@@ -102,13 +104,28 @@ final class EditorController: ObservableObject {
         pushRecent(url)
     }
 
-    func newDoc() {
+    func newDoc(asTxt: Bool) {
         var d = MDDoc(text: "", fileURL: nil)
+        d.isTxt = asTxt
         let (h, b) = parseDocument("")
         d.headings = h
         d.blocks = b
         docs.append(d)
         active = docs.count - 1
+    }
+
+    func newDocDialog() {
+        let alert = NSAlert()
+        alert.messageText = NSLocalizedString("newDoc", comment: "")
+        alert.informativeText = NSLocalizedString("chooseType", comment: "")
+        alert.addButton(withTitle: NSLocalizedString("markdown", comment: ""))
+        alert.addButton(withTitle: NSLocalizedString("plainTxt", comment: ""))
+        alert.addButton(withTitle: NSLocalizedString("cancel", comment: ""))
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: newDoc(asTxt: false)
+        case .alertSecondButtonReturn: newDoc(asTxt: true)
+        default: break
+        }
     }
 
     func closeDoc(at idx: Int) {
@@ -162,13 +179,14 @@ final class EditorController: ObservableObject {
     func saveAs() {
         guard docs.indices.contains(active) else { return }
         let panel = NSSavePanel()
-        panel.title = "保存为"
+        panel.title = NSLocalizedString("saveAsPanel", comment: "")
         panel.allowedContentTypes = [UTType(filenameExtension: "md")].compactMap { $0 }
         panel.nameFieldStringValue = activeDoc?.name ?? "未命名.md"
         if panel.runModal() == .OK, let url = panel.url {
             do {
                 try docs[active].text.write(to: url, atomically: true, encoding: .utf8)
                 docs[active].fileURL = url
+                docs[active].isTxt = url.pathExtension.lowercased() == "txt"
                 docs[active].dirty = false
                 pushRecent(url)
             } catch { NSSound.beep() }
@@ -513,6 +531,7 @@ struct PreviewView: NSViewRepresentable {
 struct SourceEditor: NSViewRepresentable {
     @Binding var text: String
     @EnvironmentObject var controller: EditorController
+    var monospaced: Bool = true
 
     func makeCoordinator() -> Coordinator { Coordinator(controller: controller, text: $text) }
 
@@ -523,7 +542,9 @@ struct SourceEditor: NSViewRepresentable {
         tv.drawsBackground = true
         tv.backgroundColor = NSColor.textBackgroundColor
         tv.textColor = NSColor.textColor
-        tv.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        tv.font = monospaced
+            ? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+            : NSFont.systemFont(ofSize: 15)
         tv.autoresizingMask = [.width]
         tv.textContainerInset = NSSize(width: 12, height: 12)
         tv.textContainer?.widthTracksTextView = true
@@ -556,7 +577,7 @@ struct SourceEditor: NSViewRepresentable {
         if let sel = controller.searchSelection,
            context.coordinator.lastSearchID != sel.id {
             context.coordinator.lastSearchID = sel.id
-            tv.setSelectedRange(sel.range)
+            tv.setSelectedRange(NSRange(location: sel.range.location, length: 0))
             tv.scrollRangeToVisible(sel.range)
         }
         context.coordinator.refreshHighlights()
@@ -676,14 +697,14 @@ struct TabBar: View {
                 ForEach(Array(controller.docs.enumerated()), id: \.element.id) { idx, doc in
                     tabItem(idx: idx, doc: doc)
                 }
-                Button { controller.newDoc() } label: {
+                Button { controller.newDocDialog() } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
                         .frame(width: 28, height: 30)
                 }
                 .buttonStyle(.plain)
-                .help("新建标签")
+                .help("new")
             }
         }
         .frame(height: 30)
@@ -710,7 +731,7 @@ struct TabBar: View {
                     .frame(width: 14, height: 14)
             }
             .buttonStyle(.plain)
-            .help("关闭标签")
+            .help("closeTab")
         }
         .padding(.horizontal, 12)
         .frame(height: 30)
@@ -721,8 +742,8 @@ struct TabBar: View {
         .contentShape(Rectangle())
         .onTapGesture { controller.selectTab(idx) }
         .contextMenu {
-            Button("关闭") { controller.closeDoc(at: idx) }
-            Button("保存") { controller.selectTab(idx); controller.save() }
+            Button("close") { controller.closeDoc(at: idx) }
+            Button("save") { controller.selectTab(idx); controller.save() }
         }
     }
 }
@@ -739,7 +760,7 @@ struct SearchBar: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundColor(.secondary)
 
-            TextField("搜索", text: $controller.searchText)
+            TextField("searchPlaceholder", text: $controller.searchText)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 170)
                 .focused($searchFocused)
@@ -751,19 +772,19 @@ struct SearchBar: View {
                 .frame(width: 52)
 
             Button { controller.findPrevious() } label: { Image(systemName: "chevron.up") }
-                .buttonStyle(.borderless).disabled(!hasMatch).help("上一个")
+                .buttonStyle(.borderless).disabled(!hasMatch).help("prevMatch")
             Button { controller.findNext() } label: { Image(systemName: "chevron.down") }
-                .buttonStyle(.borderless).disabled(!hasMatch).help("下一个")
+                .buttonStyle(.borderless).disabled(!hasMatch).help("nextMatch")
 
             Divider().frame(height: 16)
 
-            TextField("替换为", text: $controller.replaceText)
+            TextField("replacePlaceholder", text: $controller.replaceText)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 140)
 
-            Button("替换") { controller.replaceCurrent() }
+            Button("replace") { controller.replaceCurrent() }
                 .disabled(!hasMatch)
-            Button("全部替换") { controller.replaceAll() }
+            Button("replaceAll") { controller.replaceAll() }
                 .disabled(!hasMatch)
 
             Button { controller.matchCase.toggle() } label: {
@@ -771,17 +792,17 @@ struct SearchBar: View {
                     .foregroundColor(controller.matchCase ? Color.accentColor : Color.secondary)
             }
             .buttonStyle(.borderless)
-            .help("区分大小写")
+            .help("matchCase")
 
             Spacer()
 
             if controller.lastReplaceCount > 0 {
-                Text("已替换 \(controller.lastReplaceCount) 处")
+                Text(String(format: NSLocalizedString("replaceDone", comment: ""), controller.lastReplaceCount))
                     .font(.system(size: 11)).foregroundColor(.secondary)
             }
 
             Button { controller.showSearch = false } label: { Image(systemName: "xmark") }
-                .buttonStyle(.borderless).help("关闭 (⌘F)")
+                .buttonStyle(.borderless).help("closeSearch")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -793,7 +814,9 @@ struct SearchBar: View {
 
     private var countText: String {
         if controller.searchText.isEmpty { return "" }
-        if controller.matchRanges.isEmpty { return "0 处" }
+        if controller.matchRanges.isEmpty {
+            return String(format: NSLocalizedString("matchCount", comment: ""), 0)
+        }
         return "\(controller.matchIndex + 1)/\(controller.matchRanges.count)"
     }
 }
@@ -812,39 +835,56 @@ struct ContentView: View {
         )
     }
 
+    @ViewBuilder
+    private var txtLayout: some View {
+        VStack(spacing: 0) {
+            if controller.showSearch {
+                SearchBar()
+                Divider()
+            }
+            SourceEditor(text: textBinding, monospaced: false)
+        }
+    }
+
+    private var mdLayout: some View {
+        HSplitView {
+            TocView()
+                .frame(minWidth: 200, idealWidth: 260, maxWidth: 420)
+
+            VStack(spacing: 0) {
+                Picker("", selection: $tab) {
+                    Text("preview").tag(ActiveTab.preview)
+                    Text("source").tag(ActiveTab.source)
+                }
+                .pickerStyle(.segmented)
+                .padding(8)
+
+                if controller.showSearch {
+                    SearchBar()
+                    Divider()
+                }
+
+                Divider()
+
+                switch tab {
+                case .preview: PreviewView(text: controller.activeText)
+                case .source: SourceEditor(text: textBinding, monospaced: true)
+                }
+            }
+            .frame(minWidth: 480)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             TabBar()
             Divider()
-            HSplitView {
-                TocView()
-                    .frame(minWidth: 200, idealWidth: 260, maxWidth: 420)
-
-                VStack(spacing: 0) {
-                    Picker("", selection: $tab) {
-                        Text("预览").tag(ActiveTab.preview)
-                        Text("源码").tag(ActiveTab.source)
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(8)
-
-                    if controller.showSearch {
-                        SearchBar()
-                        Divider()
-                    }
-
-                    Divider()
-
-                    if controller.docs.isEmpty {
-                        emptyState
-                    } else {
-                        switch tab {
-                        case .preview: PreviewView(text: controller.activeText)
-                        case .source: SourceEditor(text: textBinding)
-                        }
-                    }
-                }
-                .frame(minWidth: 480)
+            if controller.docs.isEmpty {
+                emptyState
+            } else if controller.activeDoc?.isTxt == true {
+                txtLayout
+            } else {
+                mdLayout
             }
         }
         .background(dragOver ? Color.accentColor.opacity(0.12) : Color.clear)
@@ -853,7 +893,7 @@ struct ContentView: View {
         }
         .onOpenURL { url in
             let u = url.isFileURL ? url : URL(fileURLWithPath: url.path)
-            if ["md", "markdown", "mdown", "mkd"].contains(u.pathExtension.lowercased()) {
+            if ["md", "markdown", "mdown", "mkd", "txt"].contains(u.pathExtension.lowercased()) {
                 controller.open(url: u)
             }
         }
@@ -870,7 +910,7 @@ struct ContentView: View {
             Image(systemName: "doc.text")
                 .font(.system(size: 56, weight: .light))
                 .foregroundStyle(.tertiary)
-            Text("拖拽 .md 文件到此  ·  或菜单 文件 > 打开")
+            Text("emptyHint")
                 .foregroundStyle(.secondary)
                 .font(.system(size: 13))
         }
@@ -887,7 +927,7 @@ struct ContentView: View {
                 DispatchQueue.main.async {
                     guard let url = url as? URL else { return }
                     let u = url.isFileURL ? url : URL(fileURLWithPath: url.path)
-                    if ["md", "markdown"].contains(u.pathExtension.lowercased()) {
+                    if ["md", "markdown", "mdown", "mkd", "txt"].contains(u.pathExtension.lowercased()) {
                         controller.open(url: u)
                     }
                 }
@@ -911,38 +951,38 @@ struct MDApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("新建标签") { controller.newDoc() }.keyboardShortcut("n", modifiers: .command)
-                Button("打开…") { controller.openDialog() }.keyboardShortcut("o", modifiers: .command)
+                Button("new") { controller.newDocDialog() }.keyboardShortcut("n", modifiers: .command)
+                Button("open") { controller.openDialog() }.keyboardShortcut("o", modifiers: .command)
                 Divider()
-                Menu("最近打开") {
+                Menu("openRecent") {
                     if controller.recentFiles.isEmpty {
-                        Text("无").foregroundStyle(.secondary)
+                        Text("none").foregroundStyle(.secondary)
                     } else {
                         ForEach(controller.recentFiles, id: \.self) { url in
                             Button(url.lastPathComponent) { controller.open(url: url) }
                         }
                         Divider()
-                        Button("清除最近列表") { controller.clearRecent() }
+                        Button("clearRecent") { controller.clearRecent() }
                     }
                 }
             }
             CommandGroup(replacing: .saveItem) {
-                Button("保存") { controller.save() }.keyboardShortcut("s", modifiers: .command)
-                Button("另存为…") { controller.saveAs() }.keyboardShortcut("s", modifiers: [.command, .shift])
+                Button("save") { controller.save() }.keyboardShortcut("s", modifiers: .command)
+                Button("saveAs") { controller.saveAs() }.keyboardShortcut("s", modifiers: [.command, .shift])
                 Divider()
-                Button("关闭标签") {
+                Button("closeTab") {
                     if controller.docs.isEmpty == false { controller.closeDoc(at: controller.active) }
                 }.keyboardShortcut("w", modifiers: .command)
             }
             CommandGroup(replacing: .textEditing) {
-                Button("查找下一个") { controller.findNext() }.keyboardShortcut("g", modifiers: .command)
-                Button("查找上一个") { controller.findPrevious() }.keyboardShortcut("g", modifiers: [.command, .shift])
+                Button("findNext") { controller.findNext() }.keyboardShortcut("g", modifiers: .command)
+                Button("findPrev") { controller.findPrevious() }.keyboardShortcut("g", modifiers: [.command, .shift])
             }
             CommandGroup(replacing: .toolbar) {
-                Button("预览") { controller.requestedTab = .preview }.keyboardShortcut("1", modifiers: .command)
-                Button("源码") { controller.requestedTab = .source }.keyboardShortcut("2", modifiers: .command)
+                Button("preview") { controller.requestedTab = .preview }.keyboardShortcut("1", modifiers: .command)
+                Button("source") { controller.requestedTab = .source }.keyboardShortcut("2", modifiers: .command)
                 Divider()
-                Button("查找与替换") { controller.toggleSearch() }.keyboardShortcut("f", modifiers: .command)
+                Button("findReplace") { controller.toggleSearch() }.keyboardShortcut("f", modifiers: .command)
             }
         }
     }
